@@ -28,6 +28,8 @@ quick_error!{
         URIParsingFailed(err: warp::http::uri::InvalidUri){
             from()
         }
+
+        SignatureCalculateError(desc: String)
     }
 }
 

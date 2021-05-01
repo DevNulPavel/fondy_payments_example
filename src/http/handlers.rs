@@ -3,10 +3,13 @@ use std::{
         Arc
     }
 };
+use sha1::{
+    Digest
+};
 use tracing::{
-    debug,
-    error,
-    instrument,
+    debug, 
+    error, 
+    instrument
 };
 use warp::{
     Filter,
@@ -44,6 +47,9 @@ use super::{
         FondyInvalidResponse,
         FondyRedirectUrlResponse,
         FondyResponse
+    },
+    signature::{
+        calculate_signature
     }
 };
 
@@ -76,8 +82,7 @@ struct BuyItemParams{
 async fn buy(app: Arc<Application>, buy_params: BuyItemParams) -> Result<impl Reply, Rejection>{
     debug!("Buy params: {:#?}", buy_params);
 
-    // Подпись
-    let signature = "";
+    let order_id = uuid::Uuid::new_v4().to_string();
 
     // Стоимость в центах, то есть умноженная на 10
     let price: i32 = 10*10;
@@ -86,18 +91,20 @@ async fn buy(app: Arc<Application>, buy_params: BuyItemParams) -> Result<impl Re
     let currency = "RUB";
 
     // Адрес, куда будет редиректиться браузер
-    let redirect_url = app
+    let browser_redirect_url = app
         .site_url
-        .join("purchase_callback")
+        .join("browser_callback")
         .map_err(FondyError::from)
         .tap_err(|err| { error!("Url join error: {}", err); })?;
+    debug!("Browser callback url: {}", browser_redirect_url);
 
     // Коллбека на нашем сервере
     let server_callback_url = app
         .site_url
-        .join("purchase_callback")
+        .join("purchase_server_callback")
         .map_err(FondyError::from)
         .tap_err(|err| { error!("Url join error: {}", err); })?;
+    debug!("Server callback url: {}", server_callback_url);
 
     // Данные, которые будут в коллбеке
     let callback_data = "our_custom_payload";
@@ -106,20 +113,20 @@ async fn buy(app: Arc<Application>, buy_params: BuyItemParams) -> Result<impl Re
     let product_id = format!("{}", buy_params.item_id);
 
     // TODO: Тестовый идентификатор и пароль продавца
-    let merchant_id = 1396424;
+    let merchant_id: u64 = 1396424;
     let merchant_pass = "test";
 
     // Все параметры, но без подписи
-    let parameters = json!({
-        "order_id": "my_product_random_generated_order_id",
+    let mut parameters = json!({
+        "order_id": order_id,
         "merchant_id": merchant_id, 
         "order_desc": "My product description",
         "amount": price,
         "currency": currency,
         "version": "1.0.1",
-        "response_url": redirect_url.as_str(),
+        "response_url": browser_redirect_url.as_str(),
         "server_callback_url": server_callback_url.as_str(),
-        "merchant_data": "our_custom_payload",
+        "merchant_data": callback_data,
         "product_id": product_id
         // "payment_systems": "card, banklinks_eu, banklinks_pl",
         // "default_payment_system": "card",
@@ -138,14 +145,20 @@ async fn buy(app: Arc<Application>, buy_params: BuyItemParams) -> Result<impl Re
         // "subscription_callback_url"      // URL коллбека, куда будет перенаправлен покупатель при периодической покупке
     });
 
-    // TODO: Вычисляем подпись и добавляем к параметрам
-    // "signature": signature,
+    // Вычисляем подпись и добавляем к параметрам
+    let signature = calculate_signature(merchant_pass, &parameters)
+        .tap_err(|err| { error!("Signature calculate error: {}", err); })?;
+    parameters["signature"] = serde_json::Value::String(signature);
+
+    debug!("Fondy request params: {:#?}", &parameters);
 
     // Параметры: https://docs.fondy.eu/ru/docs/page/3/
     let response = app
         .http_client
         .post("https://pay.fondy.eu/api/checkout/url")
-        .json(&))
+        .json(&json!({
+            "request": parameters
+        }))
         .send()
         .await
         .map_err(FondyError::from)
@@ -173,8 +186,17 @@ async fn buy(app: Arc<Application>, buy_params: BuyItemParams) -> Result<impl Re
 //////////////////////////////////////////////////////////////////////////////////////////
 
 #[instrument(skip(app))]
-async fn purchase_callback(app: Arc<Application>) -> Result<impl Reply, Rejection>{
-    Ok(warp::redirect::see_other(warp::http::Uri::from_static("/")))
+async fn purchase_server_callback(app: Arc<Application>) -> Result<impl Reply, Rejection>{
+    debug!("Purchase server callback success!");
+    Ok(warp::reply())
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+#[instrument(skip(app))]
+async fn browser_callback(app: Arc<Application>) -> Result<impl Reply, Rejection>{
+    debug!("Purchase browser callback!");
+    Ok(warp::reply::html("Success"))
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -220,19 +242,31 @@ pub async fn start_server(app: Arc<Application>) {
         .recover(rejection_to_json);
 
     // Маршрут для коллбека после покупки
-    let purchase_cb = warp::path::path("purchase_callback")
-        .and(warp::get())
+    let purchase_server_cb = warp::path::path("purchase_server_callback")
+        .and(warp::post())
         .and(warp::any().map({
             let cb_app = app.clone();
             move || { 
                 cb_app.clone()
             }
         }))
-        .and_then(purchase_callback);
+        .and_then(purchase_server_callback);
+
+    // Маршрут для коллбека после покупки
+    let purchase_browser_cb = warp::path::path("browser_callback")
+        .and(warp::post())
+        .and(warp::any().map({
+            let cb_app = app.clone();
+            move || { 
+                cb_app.clone()
+            }
+        }))
+        .and_then(purchase_server_callback);
 
     let routes = index
         .or(buy)
-        .or(purchase_cb);
+        .or(purchase_server_cb)
+        .or(purchase_browser_cb);
 
     warp::serve(routes)
         .bind(([0, 0, 0, 0], 8080))

@@ -2,6 +2,7 @@ use serde::{
     Deserialize
 };
 
+/*
 /// Специальный шаблонный тип, чтобы можно было парсить возвращаемые ошибки в ответах.
 /// А после этого - конвертировать в результаты.
 #[derive(Deserialize, Debug)]
@@ -17,7 +18,7 @@ impl<D, E> DataOrErrorResponse<D, E> {
             DataOrErrorResponse::Err(err) => Err(err),
         }
     }
-}
+}*/
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -66,5 +67,5 @@ pub struct FondyInvalidResponse{
 pub struct FondyRedirectUrlResponse{
     pub response_status: String,
     pub checkout_url: String,
-    pub payment_id: u64
+    pub payment_id: String
 }
