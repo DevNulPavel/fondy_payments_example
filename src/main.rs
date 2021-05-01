@@ -9,13 +9,6 @@ use std::{
         Arc
     }
 };
-use tracing::{
-    debug_span,
-    debug,
-    event,
-    instrument,
-    Level,
-};
 use tracing_subscriber::{
     prelude::{
         *
@@ -25,11 +18,6 @@ use tracing_subscriber::{
             FmtSpan
         }
     }
-};
-use warp::{
-    Filter,
-    Reply,
-    Rejection
 };
 use url::{
     Url

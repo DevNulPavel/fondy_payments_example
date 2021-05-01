@@ -20,6 +20,14 @@ quick_error!{
         UrlError(err: url::ParseError){
             from()
         }
+
+        InvalidAPIResponse(err: crate::http::FondyInvalidResponse){
+            from()
+        }
+
+        URIParsingFailed(err: warp::http::uri::InvalidUri){
+            from()
+        }
     }
 }
 
