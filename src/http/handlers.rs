@@ -144,7 +144,7 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
     });
 
     // Вычисляем подпись и добавляем к параметрам
-    let signature = calculate_signature(&config.merchant_password, &parameters, &["signature"])
+    let signature = calculate_signature(&config.merchant_password, &parameters, &[])
         .tap_err(|err| { error!("Signature calculate error: {}", err); })?;
     parameters["signature"] = serde_json::Value::String(signature);
 
@@ -210,7 +210,7 @@ async fn purchase_server_callback(config: Arc<AppConfig>, bytes: bytes::Bytes) -
         })
         .tap_err(|err|{ error!("{}", err); })?;
 
-    // Вычисляем подпись
+    // Вычисляем подпись, пропуская поля для сигнатуры
     let calculated_signature = calculate_signature(&config.merchant_password, &data, &["signature", "response_signature_string"])?;
 
     // Парсим в структуру
@@ -237,6 +237,9 @@ async fn purchase_server_callback(config: Arc<AppConfig>, bytes: bytes::Bytes) -
     // - Если наш сервер не ответил, тогда ставим в очередь периодическую отправку оповещения + сохраняем в базу до подтверждения
     
     // Может быть сразу делать коллбек на наш сервер для выдачи??
+    
+    // Лучше ждать прямо здесь пока наш сервер не ответит, затем возвращать ошибку
+    // Тогда их сервер будет сам делать перезапрос на выдачу
 
     Ok(warp::reply())
 }
