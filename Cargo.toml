@@ -1,5 +1,5 @@
 [package]
-name = "fondy_payments_example"
+name = "fondy_payments_example_rust"
 version = "0.1.0"
 authors = ["Pavel Ershov <devnulpavel@gmail.com>"]
 edition = "2018"
