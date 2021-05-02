@@ -83,11 +83,13 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
 
     let order_id = uuid::Uuid::new_v4().to_string();
 
-    // Стоимость в центах, то есть умноженная на 10
-    let price: i32 = 10*10;
+    // TODO: ? 
+    // Стоимость в центах, то есть умноженная на 10?
+    // Либо в копейках умноженная на 100?
+    let price: i32 = 10*100;
 
     // Стоимость в центах, то есть умноженная на 10
-    let currency = "RUB";
+    let currency = "USD"; // TODO: Пhоблема с другими валютами и маленькими суммами
 
     // Адрес, куда будет редиректиться браузер
     let browser_redirect_url = config
@@ -100,13 +102,13 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
     // Коллбека на нашем сервере
     let server_callback_url = config
         .site_url
-        .join("purchase_server_callback")
+        .join("purchase_server_callback_url")
         .map_err(FondyError::from)
         .tap_err(|err| { error!("Url join error: {}", err); })?;
     debug!("Server callback url: {}", server_callback_url);
 
     // Данные, которые будут в коллбеке
-    // let callback_data = "our_custom_payload";
+    let callback_data = "our_custom_payload";
 
     // Идентификатор нашего продукта
     let product_id = format!("{}", buy_params.item_id);
@@ -120,7 +122,7 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
         "amount": price,
         "currency": currency,
         "version": "1.0.1",
-        // "merchant_data": callback_data,
+        "merchant_data": callback_data,
         "server_callback_url": server_callback_url.as_str(),
         "response_url": browser_redirect_url.as_str(),
         "product_id": product_id
@@ -199,10 +201,10 @@ async fn purchase_server_callback(data: FondyPaymentResponse) -> Result<impl Rep
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-// #[instrument(skip(data), fields(order_id = %data.order_id, order_status = ?data.order_status))]
-// async fn browser_callback(data: FondyPaymentResponse) -> Result<impl Reply, Rejection>{
-#[instrument]
-async fn browser_callback() -> Result<impl Reply, Rejection>{
+// #[instrument]
+// async fn browser_callback() -> Result<impl Reply, Rejection>{
+#[instrument(skip(data), fields(order_id = %data.order_id, order_status = ?data.order_status))]
+async fn browser_callback(data: FondyPaymentResponse) -> Result<impl Reply, Rejection>{
     Ok(warp::reply::html("Success"))
 }
 
@@ -255,7 +257,7 @@ pub async fn start_server(app: Arc<Application>) {
         .recover(rejection_to_json);
 
     // Маршрут для коллбека после покупки
-    let purchase_server_cb = warp::path::path("purchase_server_callback")
+    let purchase_server_cb = warp::path::path("purchase_server_callback_url")
         .and(warp::post())
         .and(warp::filters::body::json()) // Коллбеки POST + Json
         .and_then(purchase_server_callback);
@@ -263,7 +265,7 @@ pub async fn start_server(app: Arc<Application>) {
     // Маршрут для коллбека после покупки
     let purchase_browser_cb = warp::path::path("browser_redirect_callback_url")
         .and(warp::post())
-        // .and(warp::filters::body::form()) // В браузере POST + Form
+        .and(warp::filters::body::form()) // В браузере POST + Form
         .and_then(browser_callback);
 
     let routes = index

@@ -9,11 +9,6 @@ use tracing::{
     instrument,
     debug
 };
-use crate::{
-    error::{
-        FondyError
-    }
-};
 
 #[derive(Debug)]
 pub struct Database{
