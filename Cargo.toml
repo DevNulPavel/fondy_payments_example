@@ -13,6 +13,7 @@ dotenv = "0.15.0"
 tokio = { version = "1.5.0", features = ["full"] }
 serde = {version = "1.0.125", features = ["derive"]}
 serde_json = "1.0.64"
+serde_with = "1.8.1"
 reqwest = {version = "0.11.3", features = ["rustls-tls", "json"]}
 reqwest_inspect_json = "0.0.8"
 warp = "0.3.1"
@@ -22,3 +23,4 @@ url = "2.2.1"
 sha-1 = "0.9.4"
 uuid = { version = "0.8", features = ["v4"] }
 human-panic = "=1.0"
+bytes = "1.0.1"

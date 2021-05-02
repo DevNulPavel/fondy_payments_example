@@ -1,8 +1,6 @@
-use std::{
-    sync::{
+use std::{str::FromStr, sync::{
         Arc
-    }
-};
+    }};
 use tracing::{
     debug, 
     error, 
@@ -83,6 +81,8 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
 
     let order_id = uuid::Uuid::new_v4().to_string();
 
+    // TODO: Сохраняем в базу, что данному order_id соответствует данный покупаемый итем
+
     // TODO: ? 
     // Стоимость в центах, то есть умноженная на 10?
     // Либо в копейках умноженная на 100?
@@ -144,7 +144,7 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
     });
 
     // Вычисляем подпись и добавляем к параметрам
-    let signature = calculate_signature(&config.merchant_password, &parameters, "signature")
+    let signature = calculate_signature(&config.merchant_password, &parameters, &["signature"])
         .tap_err(|err| { error!("Signature calculate error: {}", err); })?;
     parameters["signature"] = serde_json::Value::String(signature);
 
@@ -183,8 +183,50 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-#[instrument(skip(data), fields(order_id = %data.order_id, order_status = ?data.order_status))]
-async fn purchase_server_callback(data: FondyPaymentResponse) -> Result<impl Reply, Rejection>{
+#[instrument(skip(bytes, config), fields(order_id, order_status))]
+async fn purchase_server_callback(config: Arc<AppConfig>, bytes: bytes::Bytes) -> Result<impl Reply, Rejection>{
+    let text = std::str::from_utf8(bytes.as_ref())
+        .map_err(FondyError::from)
+        .tap_err(|err|{ error!("Data scream conver to bytes failed: {}", err); })?;
+    let data = serde_json::Value::from_str(text)
+        .map_err(FondyError::from)
+        .tap_err(|err|{ error!("Data stream parse failed: {}", err); })?;
+
+    // Текущая полученная подпись
+    let received_signature = data
+        .as_object()
+        .ok_or_else(||{ 
+            FondyError::Custom("Received json must be dictionary".to_string())
+        })
+        .tap_err(|err|{ error!("{}", err); })?
+        .get("signature")
+        .ok_or_else(||{ 
+            FondyError::Custom("Signature field is missing".to_string())
+        })
+        .tap_err(|err|{ error!("{}", err); })?
+        .as_str()
+        .ok_or_else(||{ 
+            FondyError::Custom("Signature must be string".to_string())
+        })
+        .tap_err(|err|{ error!("{}", err); })?;
+
+    // Вычисляем подпись
+    let calculated_signature = calculate_signature(&config.merchant_password, &data, &["signature", "response_signature_string"])?;
+
+    // Парсим в структуру
+    let data = if received_signature.eq(calculated_signature.as_str()) {
+        let result = serde_json::from_value::<FondyPaymentResponse>(data)
+            .map_err(FondyError::from)?;
+        result
+    }else{
+        error!("Signatures are not equal: {} != {}", calculated_signature, received_signature);
+        return Err(warp::reject::reject());
+    };
+
+    // Record the result as part of the current span.
+    tracing::Span::current().record("order_id", &tracing::field::display(data.order_id.as_str()));
+    tracing::Span::current().record("order_status", &tracing::field::debug(&data.order_status));
+
     debug!("Purchase server callback success! Data: {:#?}", data);
 
     // Данный коллбек вызывается несколько раз на изменение статуса платежа
@@ -236,6 +278,7 @@ pub async fn start_server(app: Arc<Application>) {
             }
         }))
         .and_then(index);
+        // .with(warp::trace::named("index"));
 
     // Маршрут для покупки
     let buy = warp::path::path("buy")
@@ -255,23 +298,35 @@ pub async fn start_server(app: Arc<Application>) {
         .and(warp::filters::body::form())
         .and_then(buy)
         .recover(rejection_to_json);
+        // .with(warp::trace::named("buy"));
 
     // Маршрут для коллбека после покупки
     let purchase_server_cb = warp::path::path("purchase_server_callback_url")
         .and(warp::post())
-        .and(warp::filters::body::json()) // Коллбеки POST + Json
+        .and(warp::any().map({
+            let config = app.config.clone();
+            move || { 
+                config.clone()
+            }
+        }))
+        .and(warp::filters::body::bytes()) // Коллбеки POST + Json
         .and_then(purchase_server_callback);
+        // .with(warp::trace::named("purchase_server_callback_url"));
 
     // Маршрут для коллбека после покупки
     let purchase_browser_cb = warp::path::path("browser_redirect_callback_url")
         .and(warp::post())
-        .and(warp::filters::body::form()) // В браузере POST + Form
+        .and(warp::filters::body::form()
+                .or(warp::filters::body::form())
+                .unify()) // В браузере POST + Form
         .and_then(browser_callback);
+        // .with(warp::trace::named("browser_redirect_callback_url"));
 
     let routes = index
         .or(buy)
         .or(purchase_server_cb)
-        .or(purchase_browser_cb);
+        .or(purchase_browser_cb)
+        .with(warp::trace::request());
 
     warp::serve(routes)
         .bind(([0, 0, 0, 0], 8080))

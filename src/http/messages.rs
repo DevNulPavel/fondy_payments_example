@@ -2,6 +2,11 @@ use serde::{
     Deserialize,
     Serialize
 };
+use serde_with::{
+    serde_as,
+    DisplayFromStr,
+    NoneAsEmptyString
+};
 
 /*
 /// Специальный шаблонный тип, чтобы можно было парсить возвращаемые ошибки в ответах.
@@ -137,11 +142,29 @@ pub enum VerificationStatus {
 
 // TODO: Десереализация строк в enum
 // Описание: https://docs.fondy.eu/ru/docs/page/3/
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct FondyPaymentResponse{
+    #[serde_as(as = "DisplayFromStr")]
+    pub amount: u64,
+    
+    #[serde_as(as = "NoneAsEmptyString")]
+    pub response_code: Option<String>,
+    
+    #[serde_as(as = "DisplayFromStr")]
+    pub reversal_amount: u64,
+
+    #[serde_as(as = "DisplayFromStr")]
+    pub settlement_amount: u64,
+
+    #[serde_as(as = "DisplayFromStr")]
+    pub actual_amount: u64,
+
+    #[serde_as(as = "DisplayFromStr")]
+    pub approval_code: u64,
+
     pub order_id: String,
     pub merchant_id: u64,
-    pub amount: String, // TODO: парсинг строки в число с помощью serde
     pub currency: String,
     pub order_status: OrderStatus,
     pub response_status: ResponseStatus,
@@ -153,11 +176,7 @@ pub struct FondyPaymentResponse{
     pub card_bin: u64,
     pub card_type: String,
     pub rrn: String,
-    pub approval_code: String,
-    pub response_code: serde_json::Value,
     pub response_description: String,
-    pub reversal_amount: String,
-    pub settlement_amount: String,
     pub settlement_currency: String,
     pub order_time: String,
     pub settlement_date: String,
@@ -166,7 +185,6 @@ pub struct FondyPaymentResponse{
     pub payment_system: String,
     pub sender_email: String,
     pub payment_id: u32,
-    pub actual_amount: String,
     pub actual_currency: String,
     pub product_id: String,
     pub merchant_data: String,

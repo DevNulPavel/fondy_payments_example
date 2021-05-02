@@ -11,8 +11,8 @@ use crate::{
     },
 };
 
-#[instrument]
-pub fn calculate_signature(password: &str, json_data: &serde_json::Value, signature_key: &str) -> Result<String, FondyError> {
+#[instrument(err, skip(json_data, skip_keys, password))]
+pub fn calculate_signature(password: &str, json_data: &serde_json::Value, skip_keys: &[&str]) -> Result<String, FondyError> {
     let data_map = json_data
         .as_object()
         .ok_or_else(||{
@@ -32,16 +32,19 @@ pub fn calculate_signature(password: &str, json_data: &serde_json::Value, signat
         .iter()
         .filter(|val|{
             // Фильтруем на всякий пожарный ключ сигнатуры
-            val.0.ne(signature_key)
+            !skip_keys.contains(&val.0.as_str())
         })
         .fold(password.to_owned(), |mut prev, val|{
             match val.1 {
                 serde_json::Value::Bool(_) |
-                serde_json::Value::String(_) |
                 serde_json::Value::Number(_) => {
                     prev.push_str("|");
                     prev.push_str(val.1.to_string().trim_matches('\"'));
                 },
+                serde_json::Value::String(text) if !text.is_empty() => {
+                    prev.push_str("|");
+                    prev.push_str(val.1.to_string().trim_matches('\"'));
+                }
                 _ =>{
                 }
             }

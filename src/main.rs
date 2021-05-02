@@ -12,11 +12,6 @@ use std::{
 use tracing_subscriber::{
     prelude::{
         *
-    },
-    fmt::{
-        format::{
-            FmtSpan
-        }
     }
 };
 use url::{
@@ -43,10 +38,12 @@ use crate::{
 fn initialize_logs() {
     // Логи в stdout
     let stdoud_sub = tracing_subscriber::fmt::layer()
-        .pretty()
+        // .pretty()
         // .json()
-        .with_writer(std::io::stdout)
-        .with_span_events(FmtSpan::NONE);
+        // .with_span_events(FmtSpan::NONE)
+        // .compact()
+        // .with_target(false)
+        .with_writer(std::io::stdout);
 
     // Суммарный обработчик
     let full_subscriber = tracing_subscriber::registry()

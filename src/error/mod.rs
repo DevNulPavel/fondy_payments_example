@@ -29,7 +29,15 @@ quick_error!{
             from()
         }
 
-        SignatureCalculateError(desc: String)
+        SignatureCalculateError(desc: String){
+        }
+
+        UTF8ParseError(err: std::str::Utf8Error){
+            from()
+        }
+
+        Custom(desc: String){
+        }
     }
 }
 
