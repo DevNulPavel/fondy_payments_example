@@ -1,4 +1,4 @@
-mod responses;
+mod messages;
 mod handlers;
 mod signature;
 
@@ -6,7 +6,7 @@ pub use self::{
     handlers::{
         start_server
     },
-    responses::{
+    messages::{
         FondyInvalidResponse
     }
 };

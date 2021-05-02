@@ -1,57 +1,18 @@
-use std::{
-    sync::{
-        Arc
-    }
-};
 use sha1::{
     Digest
 };
 use tracing::{
     debug, 
-    error, 
     instrument
-};
-use warp::{
-    Filter,
-    Reply,
-    Rejection,
-    reject::{
-        Reject
-    }
-};
-use serde::{
-    Deserialize
-};
-use serde_json::{
-    json
-};
-use tap::{
-    prelude::{
-        *
-    }
-};
-use reqwest_inspect_json::{
-    InspectJson
 };
 use crate::{
     error::{
         FondyError
     },
-    application::{
-        Application
-    }
-};
-use super::{
-    responses::{
-        FondyDataOrErrorResponse,
-        FondyInvalidResponse,
-        FondyRedirectUrlResponse,
-        FondyResponse
-    }
 };
 
 #[instrument]
-pub fn calculate_signature(password: &str, json_data: &serde_json::Value) -> Result<String, FondyError> {
+pub fn calculate_signature(password: &str, json_data: &serde_json::Value, signature_key: &str) -> Result<String, FondyError> {
     let data_map = json_data
         .as_object()
         .ok_or_else(||{
@@ -69,6 +30,10 @@ pub fn calculate_signature(password: &str, json_data: &serde_json::Value) -> Res
 
     let joined_string = key_value_vec
         .iter()
+        .filter(|val|{
+            // Фильтруем на всякий пожарный ключ сигнатуры
+            val.0.ne(signature_key)
+        })
         .fold(password.to_owned(), |mut prev, val|{
             match val.1 {
                 serde_json::Value::Bool(_) |

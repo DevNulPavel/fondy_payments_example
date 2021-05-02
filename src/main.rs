@@ -30,7 +30,8 @@ use crate::{
         Database
     },
     application::{
-        Application
+        Application,
+        AppConfig
     },
     error::{
         FondyError
@@ -43,8 +44,9 @@ fn initialize_logs() {
     // Логи в stdout
     let stdoud_sub = tracing_subscriber::fmt::layer()
         .pretty()
+        // .json()
         .with_writer(std::io::stdout)
-        .with_span_events(FmtSpan::FULL);
+        .with_span_events(FmtSpan::NONE);
 
     // Суммарный обработчик
     let full_subscriber = tracing_subscriber::registry()
@@ -58,6 +60,9 @@ fn initialize_logs() {
 
 #[tokio::main]
 async fn main() -> Result<(), FondyError> {
+    // Настраиваем удобное чтение паники
+    human_panic::setup_panic!();
+
     // Подтягиваем окружение из файлика .env
     dotenv::dotenv().ok();
 
@@ -65,8 +70,8 @@ async fn main() -> Result<(), FondyError> {
     initialize_logs();
 
     // База данных
-    let db = Database::open_database()
-        .await;
+    let db = Arc::new(Database::open_database()
+        .await);
 
     // Шаблоны HTML
     let mut templates = handlebars::Handlebars::new();
@@ -81,12 +86,24 @@ async fn main() -> Result<(), FondyError> {
                                 .as_str())
         .expect("SITE_URL is invalid url");
 
+    // Идентификаторы продавца
+    let merchant_id = std::env::var("MERCHANT_ID")
+        .expect("MERCHANT_ID env variable is missing")
+        .parse::<u64>()
+        .expect("MERCHANT_ID must be u64");
+    let merchant_password = std::env::var("MERCHANT_PASSWORD")
+        .expect("MERCHANT_PASSWORD env variable is missing");
+
     // Приложение со всеми нужными нам менеджерами
     let app = Arc::new(Application{
         db,
-        templates,
+        templates: Arc::new(templates),
         http_client: reqwest::Client::new(),
-        site_url
+        config: Arc::new(AppConfig{
+            site_url,
+            merchant_id,
+            merchant_password
+        })
     });
 
     // Стартуем сервер
