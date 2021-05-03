@@ -124,7 +124,7 @@ async fn buy(http_client: reqwest::Client, config: Arc<AppConfig>, buy_params: B
         "version": "1.0.1",
         "merchant_data": callback_data,
         "server_callback_url": server_callback_url.as_str(),
-        "response_url": browser_redirect_url.as_str(),
+        // "response_url": browser_redirect_url.as_str(),
         "product_id": product_id
         // "payment_systems": "card, banklinks_eu, banklinks_pl",
         // "default_payment_system": "card",
@@ -285,7 +285,9 @@ pub async fn start_server(app: Arc<Application>) {
 
     // Маршрут для покупки
     let buy = warp::path::path("buy")
-        .and(warp::post())
+        .and(warp::post()
+                .or(warp::get())
+                .unify())
         .and(warp::any().map({
             let http_client = app.http_client.clone();
             move || { 
@@ -298,7 +300,9 @@ pub async fn start_server(app: Arc<Application>) {
                 config.clone()
             }
         }))
-        .and(warp::filters::body::form())
+        .and(warp::filters::body::form()
+                .or(warp::query())
+                .unify())
         .and_then(buy)
         .recover(rejection_to_json);
         // .with(warp::trace::named("buy"));
@@ -325,10 +329,15 @@ pub async fn start_server(app: Arc<Application>) {
         .and_then(browser_callback);
         // .with(warp::trace::named("browser_redirect_callback_url"));
 
+    // Маршрут для отдачи статических данных
+    let static_files = warp::path::path("static")
+        .and(warp::fs::dir("static"));
+
     let routes = index
         .or(buy)
         .or(purchase_server_cb)
         .or(purchase_browser_cb)
+        .or(static_files)
         .with(warp::trace::request());
 
     warp::serve(routes)
